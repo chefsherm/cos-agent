@@ -6,10 +6,9 @@ export async function GET(req) {
   try {
     const requester = new URL(req.url).searchParams.get("requester") || "";
     const rows = await listRequests(requester);
-    // Strip phone numbers from the listing payload.
-    const safe = rows.map(({ contactPhone, vouch, ...rest }) => ({
+    // Phone numbers are never stored; expose only the vouch summary, not the transcript.
+    const safe = rows.map(({ vouch, ...rest }) => ({
       ...rest,
-      hasPhone: !!contactPhone,
       vouch: vouch ? { summary: vouch.summary } : null,
     }));
     return Response.json({ requests: safe, smsEnabled: smsConfigured() });
