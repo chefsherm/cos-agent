@@ -6,6 +6,7 @@ AI-powered Chief of Staff. Morning brief via email at 8am ET (Mon–Fri). Full d
 
 - **`/` — Chief of Staff** (internal): ventures, decisions, morning brief, and chat for the CC team.
 - **`/onboard` — Member onboarding guide** (user-facing): a conversational agent that walks new members through how to use Candidate Collective, tailored to the **employer (hiring)** or **Referrer (individual)** path. Includes a **trust readiness check** (0–100 score with concrete ways to build trust) and a **Send to the CC team** step that emails the member's role brief or vouch to the team. The two surfaces link to each other.
+- **`/vouches` — Build trust / collect vouches** (user-facing): a member asks people who know their work to vouch for them. Each request generates a **private link** (`/vouch/[token]`) that opens a short CC chat to capture the vouch; collected vouches are stored and shown back with status. SMS delivery via Twilio is optional — without it, requests work by copy-link. Persistence uses Vercel Blob (`BLOB_READ_WRITE_TOKEN`, auto-provisioned when you add Vercel Blob storage); local dev falls back to in-memory.
 
 ## Deploy in 4 steps
 
@@ -40,6 +41,8 @@ In your Vercel project → Settings → Environment Variables, add:
 | `BRIEF_EMAIL` | Email to receive briefs |
 | `CRON_SECRET` | Any random string (e.g. `cos-secret-2026`) |
 | `SUBMIT_EMAIL` | (optional) Where `/onboard` submissions go. Defaults to `BRIEF_EMAIL`, then `founder@candidatecollective.com` |
+| `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_FROM_NUMBER` | (optional) Enables real SMS for `/vouches`. Without them, vouch requests work by copy-link |
+| `BLOB_READ_WRITE_TOKEN` | Persists vouch requests in production. Auto-set when you add Vercel Blob storage to the project |
 
 Then: Vercel → Deployments → Redeploy (to pick up env vars).
 

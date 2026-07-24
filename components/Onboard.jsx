@@ -319,6 +319,9 @@ export default function Onboard() {
               Not sure yet? Pick either — you can switch anytime.
               <br />
               <br />
+              <a href="/vouches">Building your trust? Collect vouches →</a>
+              <br />
+              <br />
               <a href="/">Candidate Collective team? Open your Chief of Staff →</a>
             </div>
           </>
