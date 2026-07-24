@@ -2,6 +2,11 @@
 
 AI-powered Chief of Staff. Morning brief via email at 8am ET (Mon–Fri). Full dashboard for ventures, decisions, and chat.
 
+## Two surfaces
+
+- **`/` — Chief of Staff** (internal): ventures, decisions, morning brief, and chat for the CC team.
+- **`/onboard` — Member onboarding guide** (user-facing): a conversational agent that walks new members through how to use Candidate Collective, tailored to the **employer (hiring)** or **Referrer (individual)** path. Includes a **trust readiness check** (0–100 score with concrete ways to build trust) and a **Send to the CC team** step that emails the member's role brief or vouch to the team. The two surfaces link to each other.
+
 ## Deploy in 4 steps
 
 ### Step 2 — Create GitHub repo and push
@@ -34,6 +39,7 @@ In your Vercel project → Settings → Environment Variables, add:
 | `RESEND_API_KEY` | From resend.com |
 | `BRIEF_EMAIL` | Email to receive briefs |
 | `CRON_SECRET` | Any random string (e.g. `cos-secret-2026`) |
+| `SUBMIT_EMAIL` | (optional) Where `/onboard` submissions go. Defaults to `BRIEF_EMAIL`, then `founder@candidatecollective.com` |
 
 Then: Vercel → Deployments → Redeploy (to pick up env vars).
 

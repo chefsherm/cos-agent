@@ -128,6 +128,8 @@ export default function Dashboard() {
         .header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 28px; }
         .title { font-size: 15px; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 8px; }
         .subtitle { font-size: 12px; color: var(--muted); margin-top: 3px; }
+        .cross-link { display: inline-block; margin-top: 8px; font-size: 12px; color: var(--info); text-decoration: none; }
+        .cross-link:hover { text-decoration: underline; }
         .badges { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
         .badge { font-size: 11px; padding: 3px 9px; border-radius: 6px; font-weight: 500; }
         .tabs { display: flex; border-bottom: 1px solid var(--border); margin-bottom: 24px; gap: 2px; }
@@ -174,6 +176,7 @@ export default function Dashboard() {
             <div className="subtitle">
               {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
             </div>
+            <a href="/onboard" className="cross-link">✦ Member onboarding guide →</a>
           </div>
           <div className="badges">
             {redCount > 0 && <span className="badge" style={{ background: STATUS.red.bg, color: STATUS.red.color }}>{redCount} blocked</span>}
