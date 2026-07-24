@@ -71,6 +71,13 @@ export default function Onboard() {
   const [result, setResult] = useState(null);
   const [scanError, setScanError] = useState("");
 
+  // submit-to-CC state
+  const [note, setNote] = useState("");
+  const [contact, setContact] = useState({ name: "", email: "", phone: "" });
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [submitError, setSubmitError] = useState("");
+
   const chatEnd = useRef(null);
   const stepTimer = useRef(null);
 
@@ -94,6 +101,10 @@ export default function Onboard() {
     setScanInput("");
     setResult(null);
     setScanError("");
+    setNote("");
+    setContact({ name: "", email: "", phone: "" });
+    setSubmitted(false);
+    setSubmitError("");
   };
 
   const send = async (text) => {
@@ -159,6 +170,34 @@ export default function Onboard() {
     }
     clearInterval(stepTimer.current);
     setScanning(false);
+  };
+
+  const openSubmit = () => {
+    setView("submit");
+    setSubmitError("");
+  };
+
+  const doSubmit = async () => {
+    if (submitting) return;
+    if (!contact.name.trim() || !contact.email.trim()) {
+      setSubmitError("Add your name and email so the team can reach you.");
+      return;
+    }
+    setSubmitting(true);
+    setSubmitError("");
+    try {
+      const r = await fetch("/api/submit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path, messages, note, contact }),
+      });
+      const data = await r.json();
+      if (data.ok) setSubmitted(true);
+      else setSubmitError(data.error || "Couldn't send that. Try again.");
+    } catch {
+      setSubmitError("Connection error. Try again.");
+    }
+    setSubmitting(false);
   };
 
   const active = path ? PATHS[path] : null;
@@ -237,6 +276,17 @@ export default function Onboard() {
         .ob-scan-actions { display: flex; gap: 8px; margin-top: 22px; }
         .ob-btn-ghost { flex: 1; padding: 11px; border-radius: 10px; border: 1px solid var(--border); background: transparent; font-size: 14px; color: var(--text); }
         .ob-err { font-size: 13px; color: var(--danger); margin-top: 12px; text-align: center; }
+
+        .ob-actions { display: flex; gap: 8px; margin-top: 12px; }
+        .ob-act { flex: 1; padding: 10px; background: transparent; border: 1px dashed var(--border); border-radius: 10px; font-size: 12.5px; color: var(--muted); display: flex; align-items: center; justify-content: center; gap: 6px; }
+        .ob-act:hover { border-color: #cfcfc8; color: var(--text); }
+        .ob-act.primary { border-style: solid; color: #fff; }
+
+        .ob-field { margin-top: 14px; }
+        .ob-label { font-size: 12px; color: var(--muted); font-weight: 500; margin-bottom: 5px; display: block; }
+        .ob-note-p { font-size: 14px; color: var(--muted); margin-top: 6px; line-height: 1.55; }
+        .ob-done { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 8px; }
+        .ob-check { width: 64px; height: 64px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 30px; color: #fff; margin-bottom: 8px; }
       `}</style>
 
       <div className="ob-wrap">
@@ -333,13 +383,16 @@ export default function Onboard() {
                         </div>
                       )}
 
+                      <button
+                        className="ob-run"
+                        style={{ background: accent, marginTop: 22 }}
+                        onClick={openSubmit}
+                      >
+                        ✦ Send this to the CC team →
+                      </button>
                       <div className="ob-scan-actions">
                         <button className="ob-btn-ghost" onClick={runScan}>↻ Run again</button>
-                        <button
-                          className="ob-btn-ghost"
-                          style={{ borderColor: accent, color: accent }}
-                          onClick={() => setView("chat")}
-                        >
+                        <button className="ob-btn-ghost" onClick={() => setView("chat")}>
                           Back to guide
                         </button>
                       </div>
@@ -369,6 +422,102 @@ export default function Onboard() {
                 </div>
               )}
             </div>
+          </>
+        ) : view === "submit" ? (
+          /* ---------- SUBMIT TO CC TEAM ---------- */
+          <>
+            <div className="ob-top">
+              <Spark size={22} color={accent} />
+              <div className="ob-title">Candidate Collective</div>
+              <span className="ob-chip" style={{ background: active.accentBg, color: accent, marginLeft: 8 }}>
+                {active.label}
+              </span>
+              {!submitted && (
+                <button className="ob-back" onClick={() => setView("chat")}>← Back</button>
+              )}
+            </div>
+
+            {submitted ? (
+              <div className="ob-done">
+                <div className="ob-check" style={{ background: accent }}>✓</div>
+                <div style={{ fontSize: 19, fontWeight: 700 }}>We've got it.</div>
+                <div className="ob-note-p" style={{ maxWidth: 320 }}>
+                  {path === "employer"
+                    ? "Your role is with the Candidate Collective team. They'll reach out to line up matches worth standing behind."
+                    : "Your vouch is with the Candidate Collective team. They'll take it from here and follow up with you."}
+                </div>
+                <button
+                  className="ob-btn-ghost"
+                  style={{ marginTop: 18, maxWidth: 200, borderColor: accent, color: accent }}
+                  onClick={() => setView("chat")}
+                >
+                  Back to guide
+                </button>
+              </div>
+            ) : (
+              <div className="ob-scan">
+                <div className="ob-scan-h">
+                  {path === "employer" ? "Send your role to the CC team" : "Send your vouch to the CC team"}
+                </div>
+                <div className="ob-note-p">
+                  We'll pass along what you've shared so far. Add anything else that matters, and where
+                  to reach you.
+                </div>
+
+                <div className="ob-field">
+                  <label className="ob-label">Anything to add? (optional)</label>
+                  <textarea
+                    rows={3}
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    placeholder={
+                      path === "employer"
+                        ? "Timeline, comp range, must-haves…"
+                        : "Anything else about who you're vouching for…"
+                    }
+                    style={{ resize: "vertical" }}
+                  />
+                </div>
+                <div className="ob-field">
+                  <label className="ob-label">Your name</label>
+                  <input
+                    type="text"
+                    value={contact.name}
+                    onChange={(e) => setContact({ ...contact, name: e.target.value })}
+                    placeholder="Full name"
+                  />
+                </div>
+                <div className="ob-field">
+                  <label className="ob-label">Email</label>
+                  <input
+                    type="text"
+                    value={contact.email}
+                    onChange={(e) => setContact({ ...contact, email: e.target.value })}
+                    placeholder="you@restaurant.com"
+                  />
+                </div>
+                <div className="ob-field">
+                  <label className="ob-label">Phone (optional)</label>
+                  <input
+                    type="text"
+                    value={contact.phone}
+                    onChange={(e) => setContact({ ...contact, phone: e.target.value })}
+                    placeholder="(555) 555-5555"
+                  />
+                </div>
+
+                {submitError && <div className="ob-err">{submitError}</div>}
+
+                <button
+                  className="ob-run"
+                  style={{ background: accent, opacity: submitting ? 0.6 : 1 }}
+                  onClick={doSubmit}
+                  disabled={submitting}
+                >
+                  {submitting ? "Sending…" : "Send to the CC team →"}
+                </button>
+              </div>
+            )}
           </>
         ) : (
           /* ---------- CHAT ---------- */
@@ -425,9 +574,12 @@ export default function Onboard() {
               </div>
             )}
 
-            <button className="ob-scanbtn" onClick={openScan}>
-              ◎ Check my trust readiness
-            </button>
+            <div className="ob-actions">
+              <button className="ob-act" onClick={openScan}>◎ Trust readiness</button>
+              <button className="ob-act primary" style={{ background: accent }} onClick={openSubmit}>
+                ✦ Send to CC team
+              </button>
+            </div>
 
             <div className="ob-inrow">
               <textarea
