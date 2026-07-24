@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { PATHS, WELCOME } from "@/lib/onboarding";
+import { PATHS, READINESS, readinessBand } from "@/lib/onboarding";
 
 function md(t) {
   if (!t) return "";
@@ -26,26 +26,74 @@ function Spark({ size = 40, color = "var(--text)" }) {
   );
 }
 
+// Circular score ring
+function ScoreRing({ score, color }) {
+  const r = 52;
+  const c = 2 * Math.PI * r;
+  const pct = Math.max(0, Math.min(100, score)) / 100;
+  return (
+    <svg width="132" height="132" viewBox="0 0 132 132">
+      <circle cx="66" cy="66" r={r} fill="none" stroke="var(--border)" strokeWidth="9" />
+      <circle
+        cx="66"
+        cy="66"
+        r={r}
+        fill="none"
+        stroke={color}
+        strokeWidth="9"
+        strokeLinecap="round"
+        strokeDasharray={c}
+        strokeDashoffset={c * (1 - pct)}
+        transform="rotate(-90 66 66)"
+        style={{ transition: "stroke-dashoffset 1.1s cubic-bezier(.4,0,.2,1)" }}
+      />
+      <text x="66" y="62" textAnchor="middle" fontSize="34" fontWeight="700" fill="var(--text)">
+        {score}
+      </text>
+      <text x="66" y="84" textAnchor="middle" fontSize="11" fill="var(--muted)">
+        / 100
+      </text>
+    </svg>
+  );
+}
+
 export default function Onboard() {
   const [path, setPath] = useState(null); // null | "employer" | "referrer"
+  const [view, setView] = useState("chat"); // "chat" | "scan"
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // readiness scan state
+  const [scanInput, setScanInput] = useState("");
+  const [scanning, setScanning] = useState(false);
+  const [scanStep, setScanStep] = useState(0);
+  const [result, setResult] = useState(null);
+  const [scanError, setScanError] = useState("");
+
   const chatEnd = useRef(null);
+  const stepTimer = useRef(null);
 
   useEffect(() => {
-    chatEnd.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, loading]);
+    if (view === "chat") chatEnd.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, loading, view]);
+
+  useEffect(() => () => clearInterval(stepTimer.current), []);
 
   const choosePath = (key) => {
     setPath(key);
+    setView("chat");
     setMessages([{ role: "assistant", content: PATHS[key].intro }]);
   };
 
   const startOver = () => {
     setPath(null);
+    setView("chat");
     setMessages([]);
     setInput("");
+    setScanInput("");
+    setResult(null);
+    setScanError("");
   };
 
   const send = async (text) => {
@@ -72,8 +120,50 @@ export default function Onboard() {
     setLoading(false);
   };
 
+  const openScan = () => {
+    setView("scan");
+    setScanError("");
+    // Seed from the member's own words in the conversation.
+    if (!scanInput) {
+      const lastUser = [...messages].reverse().find((m) => m.role === "user");
+      if (lastUser) setScanInput(lastUser.content);
+    }
+  };
+
+  const runScan = async () => {
+    if (scanning) return;
+    setScanning(true);
+    setResult(null);
+    setScanError("");
+    setScanStep(0);
+    const steps = READINESS[path].steps;
+    stepTimer.current = setInterval(() => {
+      setScanStep((s) => (s + 1) % steps.length);
+    }, 1100);
+    try {
+      const r = await fetch("/api/readiness", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path, input: scanInput, messages }),
+      });
+      const data = await r.json();
+      if (data.insufficient) {
+        setScanError("Tell me a bit more first — there wasn't enough to score yet.");
+      } else if (data.result) {
+        setResult(data.result);
+      } else {
+        setScanError("The check couldn't complete. Give it another run.");
+      }
+    } catch {
+      setScanError("Connection error. Give it another run.");
+    }
+    clearInterval(stepTimer.current);
+    setScanning(false);
+  };
+
   const active = path ? PATHS[path] : null;
   const accent = active?.accent || "var(--text)";
+  const cfg = path ? READINESS[path] : null;
 
   return (
     <>
@@ -91,6 +181,8 @@ export default function Onboard() {
         .ob-path-s { font-size: 13px; color: var(--muted); margin-top: 2px; }
         .ob-path-arrow { margin-left: auto; color: var(--muted); font-size: 18px; }
         .ob-foot { margin-top: auto; padding-top: 24px; text-align: center; font-size: 12px; color: var(--muted); }
+        .ob-foot a { color: var(--muted); text-decoration: none; border-bottom: 1px solid var(--border); }
+        .ob-foot a:hover { color: var(--text); }
 
         .ob-top { display: flex; align-items: center; gap: 10px; padding-bottom: 16px; margin-bottom: 16px; border-bottom: 1px solid var(--border-soft); }
         .ob-chip { font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 999px; }
@@ -114,6 +206,37 @@ export default function Onboard() {
         .ob-typing span { display: inline-block; width: 6px; height: 6px; margin: 0 1.5px; border-radius: 50%; background: var(--muted); animation: obb 1.2s infinite ease-in-out; }
         .ob-typing span:nth-child(2){ animation-delay: .15s; } .ob-typing span:nth-child(3){ animation-delay: .3s; }
         @keyframes obb { 0%,60%,100%{ opacity:.25; transform: translateY(0);} 30%{ opacity:1; transform: translateY(-3px);} }
+
+        .ob-scanbtn { margin-top: 10px; width: 100%; padding: 11px; background: transparent; border: 1px dashed var(--border); border-radius: 10px; font-size: 13px; color: var(--muted); display: flex; align-items: center; justify-content: center; gap: 7px; }
+        .ob-scanbtn:hover { border-color: #cfcfc8; color: var(--text); }
+
+        .ob-scan { flex: 1; display: flex; flex-direction: column; }
+        .ob-scan-h { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
+        .ob-scan-b { font-size: 14px; color: var(--muted); margin-top: 6px; line-height: 1.55; }
+        .ob-run { margin-top: 16px; width: 100%; padding: 13px; border-radius: 12px; border: none; color: #fff; font-size: 15px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 8px; }
+        .ob-scanning { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 6px; }
+        .ob-ringspin { width: 92px; height: 92px; border-radius: 50%; border: 6px solid var(--border); border-top-color: var(--text); animation: spin 0.9s linear infinite; margin-bottom: 18px; }
+        .ob-step { font-size: 14px; color: var(--muted); min-height: 20px; }
+        .ob-prog { width: 180px; height: 4px; border-radius: 4px; background: var(--border); overflow: hidden; margin-top: 14px; }
+        .ob-prog > div { height: 100%; border-radius: 4px; transition: width .9s ease; }
+
+        .ob-result-head { display: flex; flex-direction: column; align-items: center; text-align: center; margin-bottom: 8px; }
+        .ob-band { font-size: 13px; font-weight: 600; margin-top: 6px; }
+        .ob-verdict { font-size: 14px; color: var(--muted); margin-top: 8px; line-height: 1.55; max-width: 340px; }
+        .ob-dim { margin-top: 14px; }
+        .ob-dim-row { display: flex; justify-content: space-between; align-items: baseline; font-size: 13.5px; }
+        .ob-dim-name { font-weight: 500; }
+        .ob-dim-score { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+        .ob-dim-bar { height: 6px; border-radius: 4px; background: var(--border); margin-top: 5px; overflow: hidden; }
+        .ob-dim-bar > div { height: 100%; border-radius: 4px; transition: width 1s ease; }
+        .ob-dim-note { font-size: 12.5px; color: var(--muted); margin-top: 4px; line-height: 1.5; }
+        .ob-steps-sec { margin-top: 22px; border-top: 1px solid var(--border-soft); padding-top: 18px; }
+        .ob-steps-h { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 600; margin-bottom: 10px; }
+        .ob-nextstep { display: flex; gap: 10px; font-size: 14px; margin: 8px 0; line-height: 1.5; }
+        .ob-nextstep .ob-ns-dot { color: var(--text); }
+        .ob-scan-actions { display: flex; gap: 8px; margin-top: 22px; }
+        .ob-btn-ghost { flex: 1; padding: 11px; border-radius: 10px; border: 1px solid var(--border); background: transparent; font-size: 14px; color: var(--text); }
+        .ob-err { font-size: 13px; color: var(--danger); margin-top: 12px; text-align: center; }
       `}</style>
 
       <div className="ob-wrap">
@@ -142,16 +265,117 @@ export default function Onboard() {
               ))}
             </div>
 
-            <div className="ob-foot">Not sure yet? Pick either — you can switch anytime.</div>
+            <div className="ob-foot">
+              Not sure yet? Pick either — you can switch anytime.
+              <br />
+              <br />
+              <a href="/">Candidate Collective team? Open your Chief of Staff →</a>
+            </div>
+          </>
+        ) : view === "scan" ? (
+          /* ---------- READINESS SCAN ---------- */
+          <>
+            <div className="ob-top">
+              <Spark size={22} color={accent} />
+              <div className="ob-title">Candidate Collective</div>
+              <span className="ob-chip" style={{ background: active.accentBg, color: accent, marginLeft: 8 }}>
+                {active.label}
+              </span>
+              <button className="ob-back" onClick={() => setView("chat")}>← Back</button>
+            </div>
+
+            <div className="ob-scan">
+              {scanning ? (
+                <div className="ob-scanning">
+                  <div className="ob-ringspin" style={{ borderTopColor: accent }} />
+                  <div style={{ fontSize: 17, fontWeight: 600 }}>Checking your trust readiness…</div>
+                  <div className="ob-step">{cfg.steps[scanStep]}</div>
+                  <div className="ob-prog">
+                    <div style={{ width: `${((scanStep + 1) / cfg.steps.length) * 100}%`, background: accent }} />
+                  </div>
+                </div>
+              ) : result ? (
+                (() => {
+                  const b = readinessBand(result.overall);
+                  return (
+                    <div>
+                      <div className="ob-result-head">
+                        <ScoreRing score={result.overall} color={b.color} />
+                        <div className="ob-band" style={{ color: b.color }}>{b.label}</div>
+                        {result.verdict && <div className="ob-verdict">{result.verdict}</div>}
+                      </div>
+
+                      {result.dimensions.map((d) => {
+                        const db = readinessBand(d.score);
+                        return (
+                          <div key={d.name} className="ob-dim">
+                            <div className="ob-dim-row">
+                              <span className="ob-dim-name">{d.name}</span>
+                              <span className="ob-dim-score">{d.score}</span>
+                            </div>
+                            <div className="ob-dim-bar">
+                              <div style={{ width: `${d.score}%`, background: db.color }} />
+                            </div>
+                            {d.note && <div className="ob-dim-note">{d.note}</div>}
+                          </div>
+                        );
+                      })}
+
+                      {result.nextSteps.length > 0 && (
+                        <div className="ob-steps-sec">
+                          <div className="ob-steps-h">Build trust — do these next</div>
+                          {result.nextSteps.map((s, i) => (
+                            <div key={i} className="ob-nextstep">
+                              <span className="ob-ns-dot" style={{ color: accent }}>→</span>
+                              <span>{s}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      <div className="ob-scan-actions">
+                        <button className="ob-btn-ghost" onClick={runScan}>↻ Run again</button>
+                        <button
+                          className="ob-btn-ghost"
+                          style={{ borderColor: accent, color: accent }}
+                          onClick={() => setView("chat")}
+                        >
+                          Back to guide
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })()
+              ) : (
+                <div>
+                  <div className="ob-scan-h">{cfg.title}</div>
+                  <div className="ob-scan-b">{cfg.blurb}</div>
+                  <textarea
+                    rows={6}
+                    value={scanInput}
+                    onChange={(e) => setScanInput(e.target.value)}
+                    placeholder={cfg.placeholder}
+                    style={{ marginTop: 16, resize: "vertical" }}
+                  />
+                  {scanError && <div className="ob-err">{scanError}</div>}
+                  <button
+                    className="ob-run"
+                    style={{ background: accent, opacity: scanInput.trim() ? 1 : 0.45 }}
+                    onClick={runScan}
+                    disabled={!scanInput.trim()}
+                  >
+                    ◎ Run readiness check
+                  </button>
+                </div>
+              )}
+            </div>
           </>
         ) : (
           /* ---------- CHAT ---------- */
           <>
             <div className="ob-top">
               <Spark size={22} color={accent} />
-              <div>
-                <div className="ob-title">Candidate Collective</div>
-              </div>
+              <div className="ob-title">Candidate Collective</div>
               <span
                 className="ob-chip"
                 style={{ background: active.accentBg, color: accent, marginLeft: 8 }}
@@ -200,6 +424,10 @@ export default function Onboard() {
                 ))}
               </div>
             )}
+
+            <button className="ob-scanbtn" onClick={openScan}>
+              ◎ Check my trust readiness
+            </button>
 
             <div className="ob-inrow">
               <textarea
