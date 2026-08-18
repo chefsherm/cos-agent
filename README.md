@@ -8,6 +8,14 @@ AI-powered Chief of Staff. Morning brief via email at 8am ET (Mon–Fri). Full d
 - **`/onboard` — Member onboarding guide** (user-facing): a conversational agent that walks new members through how to use Candidate Collective, tailored to the **employer (hiring)** or **Referrer (individual)** path. Includes a **trust readiness check** (0–100 score with concrete ways to build trust) and a **Send to the CC team** step that emails the member's role brief or vouch to the team. The two surfaces link to each other.
 - **`/vouches` — Build trust / collect vouches** (user-facing): a member asks people who know their work to vouch for them. Each request generates a **private link** (`/vouch/[token]`) that opens a short CC chat to capture the vouch; collected vouches are stored and shown back with status. SMS delivery via Twilio is optional — without it, requests work by copy-link. Persistence uses Vercel Blob (`BLOB_READ_WRITE_TOKEN`, auto-provisioned when you add Vercel Blob storage); local dev falls back to in-memory. Phone numbers are used only to send the link and are never persisted, and the store is encrypted at rest when `DATA_ENCRYPTION_KEY` is set.
 
+## Prompts
+
+Runtime prompts for the agents in this app live next to the code that sends them (`lib/onboarding.js`, `lib/vouches.js`, `lib/data.js`). Prompts for CC's AI employees that run **outside** this app are checked in under `prompts/` so there's one canonical copy to version and paste into their runtime config:
+
+- **`prompts/vouch-capture.md` — Vouch Capture.** Sits on the inbound WhatsApp loop and turns raw Referrer replies into structured vouch records in Contact Spine (ClickUp workspace `90141390262`). Classify → extract → match Referrer → validate → file or recover with exactly one clarifying question → log. Inbound only; it never messages candidates or employers, never paraphrases a vouch line, and never creates a Referrer record. Its banned/required vocabulary matches `CC_VOCAB` in `lib/onboarding.js`.
+
+Edit the prompt here first, then redeploy it to the agent — not the other way round.
+
 ## Deploy in 4 steps
 
 ### Step 2 — Create GitHub repo and push
