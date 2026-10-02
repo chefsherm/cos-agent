@@ -1,53 +1,80 @@
 # CC AI CEO — framework in code
 
 Source: "CC AI CEO — System Prompt and Decision Framework", Oct 2, 2026, Michael Sherman.
+Board resolution: approved as Stage 1 policy infrastructure (read and draft only). Stage 2 is withheld until the gate sits in the execution path.
 
-The framework lives in two places, and neither works alone:
+> The AI may propose. The gate decides. Only a controlled executor may act, and it must refuse to act without a fresh, valid gate authorization.
 
 | File | Role |
 |------|------|
-| `lib/ceo-prompt.js` | The system prompt. Tells the model the mission, locked language, tiers, red lines, and rollout stages. |
-| `lib/ceo.js` | The policy gate. Classifies every proposed action as Green, Amber, Red, or Prohibited and decides whether it may run now. A prompt can be argued around; this cannot. |
+| `lib/ceo-prompt.js` | The system prompt: mission, locked language, tiers, red lines, rollout stages. Guidance only. |
+| `lib/ceo.js` | Deterministic policy engine. No model calls. Issues and verifies signed, action-bound authorizations. |
+| `test/ceo.test.mjs` | Policy test matrix. Run `npm test`. |
 
 ## Endpoints
 
-Both require `Authorization: Bearer $CEO_API_SECRET` and return 503 if the secret is unset.
+All require `Authorization: Bearer $CEO_API_SECRET` and fail closed when it is unset.
 
-- `POST /api/ceo` — `{ messages }` → `{ reply }`. Talks to the AI CEO. Returns text only and executes nothing.
-- `POST /api/ceo/authorize` — a proposed action → `{ stage, paused, tier, allowed, log, reasons, escalation? }`. Any executor (agent harness, Make scenario, script) calls this before acting.
+- `POST /api/ceo` — `{ messages }` → `{ reply }`. Planning and drafting. Executes nothing.
+- `POST /api/ceo/authorize` — a normalized action → a decision. Policy decision point.
+- `POST /api/ceo/verify` — `{ token, action }` → `{ ok, reason_codes }`. For executors that cannot import `lib/ceo.js`.
 
-Action shape:
+Decision shape:
 
 ```json
 {
-  "id": "act_0001", "tool": "gmail", "op": "send", "account": "founder@…",
-  "external": true, "reversible": true, "sensitiveData": false, "externalCommitment": false,
-  "categories": [], "playbook": "referrer-reactivation-pilot",
-  "target": "…", "contactSource": "…", "content": "…"
+  "decision": "ALLOW | DENY | ESCALATE | PROHIBITED",
+  "tier": "GREEN | AMBER | RED | NONE",
+  "reason_codes": ["STAGE_TOO_LOW", "MISSING_APPROVED_PLAYBOOK"],
+  "required_controls": ["playbook", "action_log", "suppression_check", "frequency_cap_check", "log_immediately"],
+  "policy_version": "2026-10-02+abc1234",
+  "stage": 1, "paused": false,
+  "token": "only on ALLOW",
+  "escalation": "only on ESCALATE"
 }
 ```
 
-## How the gate decides
+On ALLOW the token is an HMAC-signed claim set: decision, tier, action ID, SHA-256 of the canonicalized action, policy version, principal, agent ID, tool, operation, target, playbook, stage, issued and expiry times. Tokens live five minutes.
 
-- Kill switch (`CEO_PAUSED=true`) blocks everything before classification.
-- Prohibited, even with Sherm's approval: any vouch action, fabrication, and ClickUp workspace 9017065181.
-- Red: any of the four gates or six red-line categories, any tool not connected (platform CRM, Dripify, Make), any op outside the Authority Register, and anything not explicitly marked reversible, non-sensitive, and non-committing. Unflagged means Red — that is the framework's uncertainty rule.
-- Green: internal op listed as Green for a connected tool. Log after.
-- Amber: external op listed as Amber, and only when all three hold: `CEO_STAGE >= 2`, the playbook exists in `PLAYBOOKS`, and every Action Ledger field is present. Log immediately.
+## Executor contract
 
-`CEO_STAGE` and `CEO_PAUSED` are env vars on purpose: neither the model nor the app can change them. Advancing a stage or resuming after a pause is a redeploy that only Sherm makes.
+The component that holds a credential (Gmail, Apollo, ClickUp, Calendar, Drive, Make) must follow this order on every action:
 
-## Stage 2 prerequisites — status
+- Build the normalized action.
+- Call `authorize`. Anything other than ALLOW stops here.
+- Immediately before the tool call, call `verifyAuthorization(token, action)`. It re-checks signature, expiry, policy version, stage, pause state, the action hash, and the current policy decision. Any failure stops here.
+- Reject an `action_id` the Action Ledger has already recorded (replay).
+- Write the attempt to the Action Ledger. A failed write stops here.
+- Run exactly the action that was hashed. Any change to recipient, content, attachment, playbook, or tool means authorizing again.
+- Write the outcome, provider ID, and timestamp to the ledger.
+
+No gate response, an unreachable gate, or a missing signing key all mean no action.
+
+## How the engine decides
+
+- Kill switch (`CEO_PAUSED=true`): DENY everything, Green included. Tokens issued before the pause stop verifying.
+- PROHIBITED, even with Sherm's approval: any vouch action, pressuring a Referrer, fabrication, an inference presented as fact, protected traits, eligibility decisions, reading a sparse graph as low trust, an identity claim without source evidence, any ClickUp workspace other than `CC_CLICKUP_WORKSPACE_ID`, and ClickUp delete, move, permission, external share, cross-workspace copy, and attachment upload.
+- ESCALATE (Red, `[NEEDS SHERM]`): the four gates, the six red-line categories, identity claims with evidence, unregistered or unconnected tools, external Drive sharing, Apollo enrichment and export, Gmail forwarding, ClickUp writes outside the approved lists, and anything not explicitly marked reversible, non-sensitive, and non-committing.
+- ALLOW Green: an internal op registered as Green.
+- ALLOW Amber: only with Stage 2 or later, an approved playbook in `PLAYBOOKS`, every ledger field (including contact source and legitimate reason), suppression, cap, and overlap checks attested, and a known recipient status that is not a stop condition.
+
+Stage and pause come from server env only. Nothing in a request body can change them.
+
+## Stage 2 prerequisites
 
 | Prerequisite | Status |
 |---|---|
-| Agent Authority Register | v1 baseline in `AUTHORITY_REGISTER`. Needs Sherm's review before Amber is enabled. |
-| Action Ledger | Required fields enforced (`LEDGER_FIELDS`). No durable store yet — Amber cannot run without one. |
-| Outreach Playbook with numbers | Not written. `PLAYBOOKS` is empty, so no Amber send can pass the gate even at Stage 2. |
-| Kill-Switch Runbook | Not written. `CEO_PAUSED` halts this app only; it does not cancel queued Apollo or Gmail sends or deactivate Make scenarios. |
-| Stage-gate metrics and thresholds | Not set. |
+| Approved Referrer reactivation playbook with caps, timing, stop conditions, templates, escalation criteria | Not written. `PLAYBOOKS` is empty. |
+| Source-audited, suppression-checked pilot cohort from the 184 Referrers | Not selected. |
+| Durable Action Ledger (attempts, authorizations, sends, provider responses, opt-outs, corrections) | Not built. Field requirements are enforced; storage and replay rejection are not. |
+| Executor integration that verifies a fresh token before every send | Not built. The gate decides; nothing yet forces a connected tool through it. |
+| Provider-level stop path for Apollo, Gmail, and later Dripify and Make | Not built. `CEO_PAUSED` stops this app only. |
+| Tested kill-switch runbook with owner, invocation, disablement time, resumption | Not written. |
+| Protected runtime control for pause and stage (authenticated, audited, immediate, default-deny) | Not built. Env plus redeploy is acceptable for Stage 1 only. |
+| Cross-channel no-duplicate-touch mechanism | Attested by the executor (`noOverlappingSequence`); no shared store yet. |
+| Live-model adversarial testing of the model-to-action normalization layer | Not done. Deterministic engine tests pass. |
+| Director-facing Stage 2 activation record (cohort, caps, metrics, rollback criteria) | Not written. |
 
-## Known limits
+## Naming
 
-- This app has no ClickUp, Apollo, or Gmail connection of its own. The gate decides; the harness that holds those connectors must call it and obey it.
-- The daily digest is not wired to cron. Without the ledger or the CC Open Loops log as input, a digest would be the model guessing at what moved.
+"Signal Scout" was renamed to "Bridge Signal" to keep the framework clear of the banned word "Scouts".
