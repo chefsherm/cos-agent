@@ -7,7 +7,7 @@ AI-powered Chief of Staff. Morning brief via email at 8am ET (Mon–Fri). Full d
 - **`/` — Chief of Staff** (internal): ventures, decisions, morning brief, and chat for the CC team.
 - **`/onboard` — Member onboarding guide** (user-facing): a conversational agent that walks new members through how to use Candidate Collective, tailored to the **employer (hiring)** or **Referrer (individual)** path. Includes a **trust readiness check** (0–100 score with concrete ways to build trust) and a **Send to the CC team** step that emails the member's role brief or vouch to the team. The two surfaces link to each other.
 - **`/vouches` — Build trust / collect vouches** (user-facing): a member asks people who know their work to vouch for them. Each request generates a **private link** (`/vouch/[token]`) that opens a short CC chat to capture the vouch; collected vouches are stored and shown back with status. SMS delivery via Twilio is optional — without it, requests work by copy-link. Persistence uses Vercel Blob (`BLOB_READ_WRITE_TOKEN`, auto-provisioned when you add Vercel Blob storage); local dev falls back to in-memory. Phone numbers are used only to send the link and are never persisted, and the store is encrypted at rest when `DATA_ENCRYPTION_KEY` is set.
-- **`/api/ceo` — CC AI CEO** (internal, API only): the AI CEO system prompt plus a code-enforced Green / Amber / Red policy gate at `/api/ceo/authorize` that issues signed, action-bound tokens executors check at `/api/ceo/verify`. Starts at Stage 1 (read, organize, draft, digest). See [`docs/ai-ceo-framework.md`](docs/ai-ceo-framework.md).
+- **`/api/ceo` — CC AI CEO** (internal, API only): the AI CEO system prompt plus a code-enforced Green / Amber / Red policy gate at `/api/ceo/authorize` that issues signed, single-use, action-bound tokens that executors redeem at `/api/ceo/admit` against an append-only Postgres Action Ledger. Starts at Stage 1 (read, organize, draft, digest). See [`docs/ai-ceo-framework.md`](docs/ai-ceo-framework.md).
 
 ## Deploy in 4 steps
 
@@ -50,6 +50,7 @@ In your Vercel project → Settings → Environment Variables, add:
 | `CEO_PAUSED` | AI CEO kill switch. `true` halts all autonomous action |
 | `CEO_SIGNING_KEY` | Signs AI CEO action authorizations. Without it every ALLOW becomes DENY. `openssl rand -base64 32` |
 | `CC_CLICKUP_WORKSPACE_ID` / `CC_CLICKUP_ALLOWED_LIST_IDS` | ClickUp workspace and list IDs the AI CEO may write to. Workspace 9017065181 is always prohibited |
+| `CEO_LEDGER_DATABASE_URL` | Postgres for the AI CEO Action Ledger. Apply `db/ledger.sql` first. Without it every external action fails closed |
 
 Then: Vercel → Deployments → Redeploy (to pick up env vars).
 
